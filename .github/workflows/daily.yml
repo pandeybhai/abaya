@@ -1,0 +1,51 @@
+name: Daily abaya tracker
+
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install
+        run: |
+          pip install -r requirements.txt
+          playwright install --with-deps chromium
+
+      - name: Scrape Noon, Amazon.sa, Salla
+        continue-on-error: true
+        run: python abaya_tracker.py scrape --query abaya --pages 3 --salla-auto
+
+      - name: City data
+        continue-on-error: true
+        run: |
+          if [ ! -f city_trends.csv ] || [ "$(date +%d)" = "01" ]; then
+            python abaya_tracker.py cities
+          fi
+
+      - name: Report
+        run: |
+          python abaya_tracker.py report --days 30
+          mkdir -p docs
+          cp top_sellers.html docs/index.html
+          cp top10_winners.csv top10_daily.csv top10_fancy.csv city_split.csv design_by_city.csv top_products.csv docs/
+
+      - name: Save results
+        run: |
+          git config user.name "abaya-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add -A
+          git commit -m "Daily update" || echo "nothing new"
+          git push
