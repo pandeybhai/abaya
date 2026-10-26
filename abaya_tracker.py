@@ -28,7 +28,7 @@ FIELDS = ["date", "site", "query", "title", "url", "price", "rating", "reviews",
 def to_num(s):
     if s is None:
         return 0.0
-    s = str(s).translate(str.maketrans("٠١٢٣٤٥٦٧٨٩٫٬", "0123456789.,")).strip()
+    s = str(s).translate(str.maketrans("Ù Ù¡Ù¢Ù£Ù¤Ù¥Ù¦Ù§Ù¨Ù©Ù«Ù¬", "0123456789.,")).strip()
     m = re.search(r"([\d][\d,]*\.?\d*)\s*([kKmM]?)", s)
     if not m:
         return 0.0
@@ -42,9 +42,9 @@ def to_num(s):
 
 def parse_card(text):
     """Card ke text se price, rating, reviews, bought nikalta hai (generic)."""
-    t = text.translate(str.maketrans("٠١٢٣٤٥٦٧٨٩٫٬", "0123456789.,"))
+    t = text.translate(str.maketrans("Ù Ù¡Ù¢Ù£Ù¤Ù¥Ù¦Ù§Ù¨Ù©Ù«Ù¬", "0123456789.,"))
     price = 0.0
-    m = re.search(r"(?:SAR|SR|ر\.?س\.?)\s*([\d,]+\.?\d*)|([\d,]+\.?\d*)\s*(?:SAR|SR|ر\.?س)", t)
+    m = re.search(r"(?:SAR|SR|Ø±\.?Ø³\.?)\s*([\d,]+\.?\d*)|([\d,]+\.?\d*)\s*(?:SAR|SR|Ø±\.?Ø³)", t)
     if m:
         price = to_num(m.group(1) or m.group(2))
     rating = 0.0
@@ -53,19 +53,32 @@ def parse_card(text):
         rating = float(m.group(1))
     reviews = 0.0
     m = re.search(r"\(\s*([\d.,]+\s*[kK]?)\s*\)", t) or re.search(
-        r"([\d.,]+\s*[kK]?)\s*(?:ratings?|reviews?|تقييم)", t)
+        r"([\d.,]+\s*[kK]?)\s*(?:ratings?|reviews?|ØªÙÙÙÙ)", t)
     if m:
         reviews = to_num(m.group(1))
     bought = 0.0
-    m = re.search(r"([\d.,]+\s*[kK]?\+?)\s*(?:bought in past month|sold recently|تم شراؤه|تم بيع)", t)
+    m = re.search(r"([\d.,]+\s*[kK]?\+?)\s*(?:bought in past month|sold recently|ØªÙ Ø´Ø±Ø§Ø¤Ù|ØªÙ Ø¨ÙØ¹)", t)
     if m:
         bought = to_num(m.group(1))
     if not bought:
-        m = re.search(r"(?:تم بيع|تم شراء|مباع|بيع)\s*([\d.,]+\s*[kK]?\+?)", t) or re.search(
+        m = re.search(r"(?:ØªÙ Ø¨ÙØ¹|ØªÙ Ø´Ø±Ø§Ø¡|ÙØ¨Ø§Ø¹|Ø¨ÙØ¹)\s*([\d.,]+\s*[kK]?\+?)", t) or re.search(
             r"(?:sold|bought)\s*([\d.,]+\s*[kK]?\+?)", t, re.I)
         if m:
             bought = to_num(m.group(1))
     return price, rating, reviews, bought
+
+
+def safe_goto(page, url, timeout=60000, tries=3):
+    """Page kholne ki 3 koshishen (har dafa thora ruk kar), jaldi load hone par aage barhta hai."""
+    last = None
+    for i in range(tries):
+        try:
+            page.goto(url, timeout=timeout, wait_until="domcontentloaded")
+            return
+        except Exception as e:
+            last = e
+            page.wait_for_timeout(3000 * (i + 1))
+    raise last
 
 
 def scroll(page, rounds=6):
@@ -77,7 +90,7 @@ def scroll(page, rounds=6):
 def scrape_amazon(page, query, pages):
     rows = []
     for p in range(1, pages + 1):
-        page.goto(f"https://www.amazon.sa/s?k={query}&page={p}", timeout=60000)
+        safe_goto(page, f"https://www.amazon.sa/s?k={query}&page={p}", timeout=60000)
         page.wait_for_timeout(2500)
         for card in page.query_selector_all('div[data-component-type="s-search-result"]'):
             h = card.query_selector("h2")
@@ -95,7 +108,7 @@ def scrape_noon(page, query, pages):
     rows = []
     seen = set()
     for p in range(1, pages + 1):
-        page.goto(f"https://www.noon.com/saudi-en/search/?q={query}&page={p}", timeout=60000)
+        safe_goto(page, f"https://www.noon.com/saudi-en/search/?q={query}&page={p}", timeout=60000)
         page.wait_for_timeout(3000)
         scroll(page)
         for a in page.query_selector_all('a[href*="/p/"]'):
@@ -118,7 +131,7 @@ def scrape_salla(page, base, query, pages):
     seen = set()
     base = base.rstrip("/")
     for p in range(1, pages + 1):
-        page.goto(f"{base}/search?q={query}&page={p}", timeout=60000)
+        safe_goto(page, f"{base}/search?q={query}&page={p}", timeout=60000)
         page.wait_for_timeout(3000)
         scroll(page, 4)
         cards = page.query_selector_all("custom-salla-product-card, salla-product-card, .product-entry, .s-product-card-entry")
@@ -144,7 +157,9 @@ SALLA_SHOWCASE = ["https://salla.com/en/showcase", "https://salla.com/en/showcas
                   "https://salla.com/en/showcase/clothing"]
 SKIP_DOMAINS = ("salla.com", "salla.sa", "instagram.com", "twitter.com", "x.com", "snapchat.com", "tiktok.com",
                 "youtube.com", "facebook.com", "linkedin.com", "apple.com", "google.com", "whatsapp.com",
-                "t.me", "wa.me", "play.google", "apps.apple")
+                "t.me", "wa.me", "play.google", "apps.apple", "cloudflare.com", "github.com",
+                "w3.org", "microsoft.com", "mozilla.org", "wikipedia.org", "stripe.com", "paypal.com",
+                "tabby.ai", "tamara.co", "moyasar.com", "linktr.ee", "maroof.sa", "vision2030.gov.sa")
 
 
 def discover_salla(page, limit):
@@ -152,7 +167,7 @@ def discover_salla(page, limit):
     found = []
     for url in SALLA_SHOWCASE:
         try:
-            page.goto(url, timeout=60000)
+            safe_goto(page, url, timeout=60000)
             page.wait_for_timeout(3000)
             scroll(page, 4)
             for a_ in page.query_selector_all("a[href^='http']"):
@@ -174,8 +189,9 @@ def cmd_scrape(a):
     today = date.today().isoformat()
     allrows = []
     with sync_playwright() as pw:
-        browser = pw.chromium.launch(headless=not a.show)
-        ctx = browser.new_context(locale="en-US", viewport={"width": 1280, "height": 900})
+        browser = pw.chromium.launch(headless=not a.show, args=["--disable-http2"])
+        ctx = browser.new_context(locale="en-US", viewport={"width": 1280, "height": 900},
+                                  user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
         page = ctx.new_page()
         jobs = []
         if not a.only or a.only == "noon":
@@ -244,27 +260,27 @@ def analyze(rows, days, today=None):
 
 
 DESIGNS = [  # (naam, keywords - English aur Arabic)
-    ("Open front", ["open front", "front open", "open abaya", "مفتوح"]),
-    ("Kimono", ["kimono", "كيمونو"]),
-    ("Butterfly", ["butterfly", "فراشة", "فراشه", "بترفلاي"]),
-    ("Bisht/Cape", ["bisht", "cape", "بشت", "كاب"]),
-    ("Beaded/Crystal", ["bead", "crystal", "stone", "pearl", "خرز", "كريستال", "ستراس", "لؤلؤ"]),
-    ("Embroidered", ["embroider", "تطريز", "مطرز"]),
-    ("Lace", ["lace", "دانتيل"]),
-    ("Pleated", ["pleat", "بليسيه"]),
-    ("Cardigan", ["cardigan", "كارديجان"]),
-    ("Prayer set", ["prayer", "صلاة", "صلاه"]),
-    ("Closed/Plain", ["closed", "plain", "simple", "سادة", "ساده", "مقفل"]),
+    ("Open front", ["open front", "front open", "open abaya", "ÙÙØªÙØ­"]),
+    ("Kimono", ["kimono", "ÙÙÙÙÙÙ"]),
+    ("Butterfly", ["butterfly", "ÙØ±Ø§Ø´Ø©", "ÙØ±Ø§Ø´Ù", "Ø¨ØªØ±ÙÙØ§Ù"]),
+    ("Bisht/Cape", ["bisht", "cape", "Ø¨Ø´Øª", "ÙØ§Ø¨"]),
+    ("Beaded/Crystal", ["bead", "crystal", "stone", "pearl", "Ø®Ø±Ø²", "ÙØ±ÙØ³ØªØ§Ù", "Ø³ØªØ±Ø§Ø³", "ÙØ¤ÙØ¤"]),
+    ("Embroidered", ["embroider", "ØªØ·Ø±ÙØ²", "ÙØ·Ø±Ø²"]),
+    ("Lace", ["lace", "Ø¯Ø§ÙØªÙÙ"]),
+    ("Pleated", ["pleat", "Ø¨ÙÙØ³ÙÙ"]),
+    ("Cardigan", ["cardigan", "ÙØ§Ø±Ø¯ÙØ¬Ø§Ù"]),
+    ("Prayer set", ["prayer", "ØµÙØ§Ø©", "ØµÙØ§Ù"]),
+    ("Closed/Plain", ["closed", "plain", "simple", "Ø³Ø§Ø¯Ø©", "Ø³Ø§Ø¯Ù", "ÙÙÙÙ"]),
 ]
 COLORS = [
-    ("Black", ["black", "أسود", "اسود"]), ("Beige", ["beige", "بيج"]), ("Brown", ["brown", "بني"]),
-    ("Mocha", ["mocha", "موكا"]), ("Navy", ["navy", "كحلي"]), ("Grey", ["grey", "gray", "رمادي"]),
-    ("Burgundy", ["burgundy", "عنابي"]), ("Green", ["green", "أخضر", "اخضر"]),
-    ("Olive", ["olive", "زيتي"]), ("White", ["white", "أبيض", "ابيض"]), ("Pink", ["pink", "وردي"]),
-    ("Blue", ["blue", "أزرق", "ازرق"]), ("Cream", ["cream", "كريمي"]),
+    ("Black", ["black", "Ø£Ø³ÙØ¯", "Ø§Ø³ÙØ¯"]), ("Beige", ["beige", "Ø¨ÙØ¬"]), ("Brown", ["brown", "Ø¨ÙÙ"]),
+    ("Mocha", ["mocha", "ÙÙÙØ§"]), ("Navy", ["navy", "ÙØ­ÙÙ"]), ("Grey", ["grey", "gray", "Ø±ÙØ§Ø¯Ù"]),
+    ("Burgundy", ["burgundy", "Ø¹ÙØ§Ø¨Ù"]), ("Green", ["green", "Ø£Ø®Ø¶Ø±", "Ø§Ø®Ø¶Ø±"]),
+    ("Olive", ["olive", "Ø²ÙØªÙ"]), ("White", ["white", "Ø£Ø¨ÙØ¶", "Ø§Ø¨ÙØ¶"]), ("Pink", ["pink", "ÙØ±Ø¯Ù"]),
+    ("Blue", ["blue", "Ø£Ø²Ø±Ù", "Ø§Ø²Ø±Ù"]), ("Cream", ["cream", "ÙØ±ÙÙÙ"]),
 ]
-FANCY_WORDS = ["party", "evening", "occasion", "wedding", "eid", "سهرة", "سهره", "مناسبات", "زفاف", "عيد",
-               "embroider", "bead", "crystal", "تطريز", "خرز", "كريستال", "ستراس"]
+FANCY_WORDS = ["party", "evening", "occasion", "wedding", "eid", "Ø³ÙØ±Ø©", "Ø³ÙØ±Ù", "ÙÙØ§Ø³Ø¨Ø§Øª", "Ø²ÙØ§Ù", "Ø¹ÙØ¯",
+               "embroider", "bead", "crystal", "ØªØ·Ø±ÙØ²", "Ø®Ø±Ø²", "ÙØ±ÙØ³ØªØ§Ù", "Ø³ØªØ±Ø§Ø³"]
 
 
 def classify(title, price):
@@ -283,13 +299,13 @@ CITIES = list(POP)
 ALIASES = {"riyadh": "Riyadh", "jeddah": "Jeddah", "jiddah": "Jeddah", "mecca": "Makkah", "makkah": "Makkah",
            "medina": "Madinah", "madinah": "Madinah", "al madinah": "Madinah", "al-madinah": "Madinah",
            "dammam": "Dammam", "ad dammam": "Dammam", "al dammam": "Dammam", "dammam city": "Dammam",
-           "الرياض": "Riyadh", "جدة": "Jeddah", "جده": "Jeddah", "مكة": "Makkah", "مكة المكرمة": "Makkah",
-           "مكه": "Makkah", "المدينة": "Madinah", "المدينة المنورة": "Madinah", "المدينه": "Madinah",
-           "الدمام": "Dammam"}
+           "Ø§ÙØ±ÙØ§Ø¶": "Riyadh", "Ø¬Ø¯Ø©": "Jeddah", "Ø¬Ø¯Ù": "Jeddah", "ÙÙØ©": "Makkah", "ÙÙØ© Ø§ÙÙÙØ±ÙØ©": "Makkah",
+           "ÙÙÙ": "Makkah", "Ø§ÙÙØ¯ÙÙØ©": "Madinah", "Ø§ÙÙØ¯ÙÙØ© Ø§ÙÙÙÙØ±Ø©": "Madinah", "Ø§ÙÙØ¯ÙÙÙ": "Madinah",
+           "Ø§ÙØ¯ÙØ§Ù": "Dammam"}
 DESIGN_TRENDS = {
-    "overall": "عباية", "Open front": "عباية مفتوحة", "Kimono": "عباية كيمونو",
-    "Butterfly": "عباية فراشة", "Embroidered": "عباية مطرزة", "Beaded/Crystal": "عباية كريستال",
-    "Bisht/Cape": "بشت نسائي", "Lace": "عباية دانتيل", "Closed/Plain": "عباية سادة",
+    "overall": "Ø¹Ø¨Ø§ÙØ©", "Open front": "Ø¹Ø¨Ø§ÙØ© ÙÙØªÙØ­Ø©", "Kimono": "Ø¹Ø¨Ø§ÙØ© ÙÙÙÙÙÙ",
+    "Butterfly": "Ø¹Ø¨Ø§ÙØ© ÙØ±Ø§Ø´Ø©", "Embroidered": "Ø¹Ø¨Ø§ÙØ© ÙØ·Ø±Ø²Ø©", "Beaded/Crystal": "Ø¹Ø¨Ø§ÙØ© ÙØ±ÙØ³ØªØ§Ù",
+    "Bisht/Cape": "Ø¨Ø´Øª ÙØ³Ø§Ø¦Ù", "Lace": "Ø¹Ø¨Ø§ÙØ© Ø¯Ø§ÙØªÙÙ", "Closed/Plain": "Ø¹Ø¨Ø§ÙØ© Ø³Ø§Ø¯Ø©",
 }
 CITY_TRENDS_FILE = "city_trends.csv"   # cities command banata hai: keyword,city,interest
 CITY_MANUAL_FILE = "city_weights.csv"  # aap khud bana sakte hain: city,weight (apna asli data)
@@ -348,11 +364,11 @@ def load_orders():
         return ""
     overall, per, total = defaultdict(float), defaultdict(lambda: defaultdict(float)), 0.0
     for r in rows:
-        c = ALIASES.get(pick(r, ["city", "المدينة", "مدينة"]).lower())
+        c = ALIASES.get(pick(r, ["city", "Ø§ÙÙØ¯ÙÙØ©", "ÙØ¯ÙÙØ©"]).lower())
         if not c:
             continue
-        qty = to_num(pick(r, ["qty", "quantity", "الكمية"])) or 1.0
-        title = pick(r, ["product", "title", "المنتج", "اسم المنتج"])
+        qty = to_num(pick(r, ["qty", "quantity", "Ø§ÙÙÙÙØ©"])) or 1.0
+        title = pick(r, ["product", "title", "Ø§ÙÙÙØªØ¬", "Ø§Ø³Ù Ø§ÙÙÙØªØ¬"])
         design = pick(r, ["design"]) or classify(title, 0)[0]
         overall[c] += qty
         per[design][c] += qty
@@ -427,7 +443,15 @@ def save_csv(name, header, rows):
 def cmd_report(a):
     res = analyze(load_history(), a.days)
     if not res:
-        sys.exit("Is muddat ka data nahi mila.")
+        msg = ("Abhi koi data nahi mila. Scrape step mein dekhein ke Noon/Amazon/Salla ne block kiya ya nahi.")
+        print(msg)
+        for name, hdr in [("top10_winners.csv", ["rank"]), ("top10_daily.csv", ["rank"]), ("top10_fancy.csv", ["rank"]),
+                          ("top_products.csv", ["site"]), ("city_split.csv", ["city"]), ("design_by_city.csv", ["design"])]:
+            save_csv(name, hdr, [])
+        with open("top_sellers.html", "w", encoding="utf-8") as f:
+            f.write("<!doctype html><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
+                    f"<body style='font-family:system-ui;padding:16px'><h2>Abaya Report</h2><p>{msg}</p></body>")
+        return
     use_est = any(r["bought_month"] > 0 for r in res)  # kam az kam ek product ne sold number dikhaya
     mlabel = "Sold (site ke mutabiq)" if use_est else "Reviews (kisi product ne sold number nahi dikhaya)"
     if use_est:
